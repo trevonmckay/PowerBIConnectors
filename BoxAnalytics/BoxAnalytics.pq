@@ -17,10 +17,40 @@ DefaultRequestHeaders = [
 BoxAnalyticsImpl = (url as text) =>
     let
         content = Web.Contents(url, [ Headers = DefaultRequestHeaders ]),
-        json = Json.Document(content)
-        //table = Table.FromList(json, Splitter.SplitByNothing())
+        json = Json.Document(content),
+        totalCount = json[total_count],
+        EntitiesPerPage = 1000,
+
+        GetEntityCount = () =>
+            let Url = url,
+                Json = GetJson(Url),
+                Count = Json[#"total_count"]
+            in
+                Count,
+
+        GetJson = (requestUrl) =>
+            let RawContent = Web.Contents(requestUrl, [ Headers = DefaultRequestHeaders ]),
+                Json = Json.Document(RawContent)
+            in
+                Json,
+
+        GetPage = (Index) =>
+            let Offset = "offset=" & Text.From(Index * EntitiesPerPage),
+                Limit = "limit=" & Text.From(EntitiesPerPage),
+                RequestUrl = url & "?" & Offset & "&" & Limit,
+                Json = GetJson(RequestUrl),
+                Value = Json[#"entries"]
+            in
+                Value,
+
+        EntityCount = List.Max( { EntitiesPerPage, GetEntityCount() }),
+        PageCount = Number.RoundUp(EntityCount / EntitiesPerPage),
+        PageIndices = { 0 .. PageCount - 1 },
+        Pages = List.Transform(PageIndices, each GetPage(_)),
+        Entities = List.Union(Pages),
+        Table = Table.FromList(Entities, Splitter.SplitByNothing(), null, null, ExtraValues.Ignore)
     in
-        json;
+        Table;
 
 // Data Source Kind description
 BoxAnalytics = [
